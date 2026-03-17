@@ -56,6 +56,8 @@ if comparison_file:
             for supplier, col_pattern in [
                 ("EBS", "EBS Unit Price\n(ZAR+Shipping)"),
                 ("PartsWise OEM", "PW OE Unit Price\n(ZAR+Shipping)"),
+                ("PartsWise AFT", "PW AFT Unit Price\n(ZAR+Shipping)"),
+                ("PartsWise Classic", "PW ClassicL Unit Price\n(ZAR+Shipping)"),
                 ("D911", "D911 Unit Price\n(ZAR+Shipping)")
             ]:
                 if col_pattern in df.columns and df[col_pattern].notna().any():
@@ -95,6 +97,14 @@ if comparison_file:
             )
             st.caption(f"💡 International must save >{intl_threshold}% vs PZA")
         
+        st.info("""
+        **Suppliers considered:**
+        - 🇿🇦 Local: JB, Porsche ZA
+        - 🌍 International: EBS, PartsWise (OEM/AFT/Classic), D911
+        
+        All suppliers compete based on price. International suppliers must meet the savings threshold.
+        """)
+        
         st.write("**Additional Settings:**")
         show_reason = st.checkbox(
             "Show selection reason",
@@ -111,7 +121,9 @@ if comparison_file:
         JB_COL = 'JB Unit Price'
         PZA_COL = 'Porsche ZA Unit Price'
         EBS_SHIP_COL = 'EBS Unit Price\n(ZAR+Shipping)'
-        PW_SHIP_COL = 'PW OE Unit Price\n(ZAR+Shipping)'
+        PW_OEM_SHIP_COL = 'PW OE Unit Price\n(ZAR+Shipping)'
+        PW_AFT_SHIP_COL = 'PW AFT Unit Price\n(ZAR+Shipping)'
+        PW_CLASSIC_SHIP_COL = 'PW ClassicL Unit Price\n(ZAR+Shipping)'
         D911_SHIP_COL = 'D911 Unit Price\n(ZAR+Shipping)'
         EBS_GEN_COL = 'EBS Genuine'
         
@@ -143,9 +155,19 @@ if comparison_file:
                 international_suppliers.append('EBS')
             
             # PartsWise OEM (international)
-            if pd.notna(row.get(PW_SHIP_COL)) and row.get(PW_SHIP_COL, 0) > 0:
-                prices['PW OEM'] = row[PW_SHIP_COL]
+            if pd.notna(row.get(PW_OEM_SHIP_COL)) and row.get(PW_OEM_SHIP_COL, 0) > 0:
+                prices['PW OEM'] = row[PW_OEM_SHIP_COL]
                 international_suppliers.append('PW OEM')
+            
+            # PartsWise Aftermarket (international)
+            if pd.notna(row.get(PW_AFT_SHIP_COL)) and row.get(PW_AFT_SHIP_COL, 0) > 0:
+                prices['PW AFT'] = row[PW_AFT_SHIP_COL]
+                international_suppliers.append('PW AFT')
+            
+            # PartsWise Classic Line (international)
+            if pd.notna(row.get(PW_CLASSIC_SHIP_COL)) and row.get(PW_CLASSIC_SHIP_COL, 0) > 0:
+                prices['PW Classic'] = row[PW_CLASSIC_SHIP_COL]
+                international_suppliers.append('PW Classic')
             
             # Apply international threshold
             if pza_price:
@@ -176,7 +198,7 @@ if comparison_file:
                         # Savings worth switching
                         best_supplier = cheapest_supplier
                         best_price = cheapest_price
-                        if cheapest_supplier in ['D911', 'EBS', 'PW OEM']:
+                        if cheapest_supplier in ['D911', 'EBS', 'PW OEM', 'PW AFT', 'PW Classic']:
                             pct_saving = ((pza_price - cheapest_price) / pza_price * 100) if pza_price else 0
                             reason = f'Saves {pct_saving:.1f}% vs PZA (>{intl_threshold}% threshold)'
                         else:
@@ -185,7 +207,7 @@ if comparison_file:
                     best_supplier = cheapest_supplier
                     best_price = cheapest_price
                     
-                    if best_supplier in ['D911', 'EBS', 'PW OEM'] and pza_price:
+                    if best_supplier in ['D911', 'EBS', 'PW OEM', 'PW AFT', 'PW Classic'] and pza_price:
                         pct_saving = ((pza_price - best_price) / pza_price * 100)
                         reason = f'Saves {pct_saving:.1f}% vs PZA'
                     elif best_supplier == 'JB':
@@ -337,7 +359,7 @@ if comparison_file:
             st.info(f"""
             ✅ Column E updated with best supplier
             ✅ Business rules applied (JB priority: R{jb_threshold}, International: {intl_threshold}%)
-            ✅ All EBS parts included (Genuine & Aftermarket)
+            ✅ All supplier options considered (OEM, Aftermarket, Classic)
             ✅ Row order maintained
             ✅ Ready to copy/paste or use directly
             """)
@@ -384,7 +406,7 @@ else:
     **Your Business Rules:**
     - ✅ **JB Priority:** Choose JB unless others save >R700
     - ✅ **International Threshold:** Must save >15% vs PZA (logistics)
-    - ✅ **All EBS Parts:** Includes both Genuine & Aftermarket
+    - ✅ **All Suppliers:** Includes OEM, Aftermarket, and Classic Line from all suppliers
     - ✅ **Local Preference:** Prefer JB/PZA when close
     
     **Adjustable:**

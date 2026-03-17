@@ -234,7 +234,7 @@ if comparison_file:
         
         supplier_counts = df['Best supplier'].value_counts()
         
-        col1, col2, col3, col4 = st.columns(4)
+        col1, col2, col3 = st.columns(3)
         
         with col1:
             st.metric("Total Parts", len(df))
@@ -247,15 +247,6 @@ if comparison_file:
             total_cost = (df['Best Price (Calculated)'] * df['Quantity']).sum()
             st.metric("Total Cost", f"R {total_cost:,.0f}" if pd.notna(total_cost) else "N/A")
         
-        with col4:
-            if pza_price:
-                total_savings = df['Savings vs PZA (R)'].sum() * df['Quantity']
-                st.metric("Total Savings", f"R {total_savings:,.0f}" if pd.notna(total_savings) else "N/A")
-        
-        # Breakdown
-        st.write("**Supplier Distribution:**")
-        breakdown = []
-        for supplier in supplier_counts.index:
             if pd.notna(supplier):
                 count = supplier_counts[supplier]
                 supplier_parts = df[df['Best supplier'] == supplier]

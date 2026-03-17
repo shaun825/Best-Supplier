@@ -247,6 +247,10 @@ if comparison_file:
             total_cost = (df['Best Price (Calculated)'] * df['Quantity']).sum()
             st.metric("Total Cost", f"R {total_cost:,.0f}" if pd.notna(total_cost) else "N/A")
         
+        # Breakdown
+        st.write("**Supplier Distribution:**")
+        breakdown = []
+        for supplier in supplier_counts.index:
             if pd.notna(supplier):
                 count = supplier_counts[supplier]
                 supplier_parts = df[df['Best supplier'] == supplier]

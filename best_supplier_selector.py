@@ -99,18 +99,33 @@ if comparison_file:
         
         st.info("""
         **Suppliers considered:**
-        - 🇿🇦 Local: JB, Porsche ZA
-        - 🌍 International: EBS, PartsWise (OEM/AFT/Classic), D911
+        - 🇿🇦 OEM Local: JB, Porsche ZA
+        - 🌍 OEM International: PartsWise OEM, EBS (Genuine)
+        - 🌍 Aftermarket/Other: PartsWise AFT/Classic, D911, EBS (Aftermarket)
         
-        All suppliers compete based on price. International suppliers must meet the savings threshold.
+        When "OEM only for seals/trim" is enabled, aftermarket suppliers are excluded for those parts.
         """)
         
         st.write("**Additional Settings:**")
-        show_reason = st.checkbox(
-            "Show selection reason",
-            value=True,
-            help="Add explanation of why each supplier was chosen"
-        )
+        
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            oem_only_seals = st.checkbox(
+                "OEM only for rubber seals & body trim",
+                value=True,
+                help="Force rubber seals, gaskets, and body trim to use only OEM suppliers"
+            )
+        
+        with col2:
+            show_reason = st.checkbox(
+                "Show selection reason",
+                value=True,
+                help="Add explanation of why each supplier was chosen"
+            )
+        
+        if oem_only_seals:
+            st.caption("💡 Parts with: seal, rubber, trim, gasket, o-ring, grommet, weatherstrip → OEM suppliers only (JB, Porsche ZA, PW OEM, EBS Genuine)")
         
         st.divider()
         
@@ -126,6 +141,18 @@ if comparison_file:
         PW_CLASSIC_SHIP_COL = 'PW ClassicL Unit Price\n(ZAR+Shipping)'
         D911_SHIP_COL = 'D911 Unit Price\n(ZAR+Shipping)'
         EBS_GEN_COL = 'EBS Genuine'
+        
+        # Function to check if part requires OEM only
+        def is_oem_only_part(description):
+            if pd.isna(description):
+                return False
+            desc_lower = str(description).lower()
+            oem_keywords = [
+                'seal', 'rubber', 'trim', 'gasket', 
+                'o-ring', 'o ring', 'grommet', 'weatherstrip',
+                'weather strip', 'buffer'
+            ]
+            return any(keyword in desc_lower for keyword in oem_keywords)
         
         results = []
         
@@ -169,6 +196,35 @@ if comparison_file:
                 prices['PW Classic'] = row[PW_CLASSIC_SHIP_COL]
                 international_suppliers.append('PW Classic')
             
+            # Apply OEM-only filter for seals/trim if enabled
+            if oem_only_seals and is_oem_only_part(row.get('Description')):
+                # Keep only OEM suppliers: JB, Porsche ZA, PW OEM, EBS (if genuine)
+                non_oem_suppliers = []
+                
+                # Remove D911 (mixed quality)
+                if 'D911' in prices:
+                    non_oem_suppliers.append('D911')
+                
+                # Remove PW AFT (aftermarket)
+                if 'PW AFT' in prices:
+                    non_oem_suppliers.append('PW AFT')
+                
+                # Remove PW Classic (not OEM)
+                if 'PW Classic' in prices:
+                    non_oem_suppliers.append('PW Classic')
+                
+                # Remove EBS if not genuine
+                if 'EBS' in prices:
+                    if not row.get(EBS_GEN_COL) == True:
+                        non_oem_suppliers.append('EBS')
+                
+                # Remove all non-OEM suppliers
+                for supplier in non_oem_suppliers:
+                    if supplier in prices:
+                        del prices[supplier]
+                    if supplier in international_suppliers:
+                        international_suppliers.remove(supplier)
+            
             # Apply international threshold
             if pza_price:
                 threshold_price = pza_price * (1 - intl_threshold / 100)
@@ -207,13 +263,24 @@ if comparison_file:
                     best_supplier = cheapest_supplier
                     best_price = cheapest_price
                     
+                    # Check if OEM-only rule was applied
+                    oem_only_applied = oem_only_seals and is_oem_only_part(row.get('Description'))
+                    
                     if best_supplier in ['D911', 'EBS', 'PW OEM', 'PW AFT', 'PW Classic'] and pza_price:
                         pct_saving = ((pza_price - best_price) / pza_price * 100)
                         reason = f'Saves {pct_saving:.1f}% vs PZA'
+                        if oem_only_applied and best_supplier in ['PW OEM', 'EBS']:
+                            reason += ' (OEM required)'
                     elif best_supplier == 'JB':
                         reason = 'JB available (preferred)'
+                    elif best_supplier == 'Porsche ZA':
+                        reason = 'Porsche ZA'
+                        if oem_only_applied:
+                            reason += ' (OEM required)'
                     else:
                         reason = 'Best available price'
+                        if oem_only_applied:
+                            reason += ' (OEM required)'
                 
                 # Calculate savings vs PZA
                 if pza_price:
@@ -249,6 +316,12 @@ if comparison_file:
         df['Savings vs PZA (%)'] = results_df['% Savings']
         
         st.success("✅ Best supplier calculated for all parts!")
+        
+        # Show OEM-only parts count if enabled
+        if oem_only_seals:
+            oem_only_count = sum(1 for idx, row in df.iterrows() if is_oem_only_part(row.get('Description')))
+            if oem_only_count > 0:
+                st.info(f"🔒 {oem_only_count} parts restricted to OEM suppliers (seals, rubber, trim)")
         
         # Summary
         st.divider()
@@ -356,10 +429,11 @@ if comparison_file:
         
         with col1:
             st.write("**Download your comparison sheet with Column E (Best supplier) filled in.**")
+            oem_msg = "✅ OEM only for seals/trim enabled\n            " if oem_only_seals else ""
             st.info(f"""
             ✅ Column E updated with best supplier
             ✅ Business rules applied (JB priority: R{jb_threshold}, International: {intl_threshold}%)
-            ✅ All supplier options considered (OEM, Aftermarket, Classic)
+            {oem_msg}✅ All supplier options considered (OEM, Aftermarket, Classic)
             ✅ Row order maintained
             ✅ Ready to copy/paste or use directly
             """)
@@ -406,6 +480,7 @@ else:
     **Your Business Rules:**
     - ✅ **JB Priority:** Choose JB unless others save >R700
     - ✅ **International Threshold:** Must save >15% vs PZA (logistics)
+    - ✅ **OEM Only for Seals/Trim:** Rubber seals and body trim restricted to OEM suppliers (JB, Porsche ZA, PW OEM, EBS Genuine)
     - ✅ **All Suppliers:** Includes OEM, Aftermarket, and Classic Line from all suppliers
     - ✅ **Local Preference:** Prefer JB/PZA when close
     

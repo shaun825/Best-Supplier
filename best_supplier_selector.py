@@ -124,8 +124,14 @@ if comparison_file:
                 help="Add explanation of why each supplier was chosen"
             )
         
+        st.caption("""
+        💡 **Automatic checks:**
+        - JB stock availability (excludes JB if insufficient stock)
+        - OEM-only for seals/trim (if enabled above)
+        """)
+        
         if oem_only_seals:
-            st.caption("💡 Parts with: seal, rubber, trim, gasket, o-ring, grommet, weatherstrip → OEM suppliers only (JB, Porsche ZA, PW OEM, EBS Genuine)")
+            st.caption("🔒 Parts with: seal, rubber, trim, gasket, o-ring, grommet, weatherstrip → OEM suppliers only (JB, Porsche ZA, PW OEM, EBS Genuine)")
         
         st.divider()
         
@@ -134,6 +140,7 @@ if comparison_file:
         
         # Define columns
         JB_COL = 'JB Unit Price'
+        JB_STOCK_COL = 'JB Stock'
         PZA_COL = 'Porsche ZA Unit Price'
         EBS_SHIP_COL = 'EBS Unit Price\n(ZAR+Shipping)'
         PW_OEM_SHIP_COL = 'PW OE Unit Price\n(ZAR+Shipping)'
@@ -141,6 +148,7 @@ if comparison_file:
         PW_CLASSIC_SHIP_COL = 'PW ClassicL Unit Price\n(ZAR+Shipping)'
         D911_SHIP_COL = 'D911 Unit Price\n(ZAR+Shipping)'
         EBS_GEN_COL = 'EBS Genuine'
+        QUANTITY_COL = 'Quantity'
         
         # Function to check if part requires OEM only
         def is_oem_only_part(description):
@@ -162,8 +170,25 @@ if comparison_file:
             international_suppliers = []
             
             # JB (local)
+            jb_insufficient_stock = False
+            jb_stock_info = ""
+            
             if pd.notna(row.get(JB_COL)) and row.get(JB_COL, 0) > 0:
-                prices['JB'] = row[JB_COL]
+                # Check if JB has sufficient stock
+                quantity_needed = row.get(QUANTITY_COL, 0)
+                jb_stock = row.get(JB_STOCK_COL, 0)
+                
+                if pd.notna(jb_stock) and pd.notna(quantity_needed):
+                    if jb_stock >= quantity_needed:
+                        # Sufficient stock
+                        prices['JB'] = row[JB_COL]
+                    else:
+                        # Insufficient stock - don't add JB
+                        jb_insufficient_stock = True
+                        jb_stock_info = f"has {int(jb_stock)}, need {int(quantity_needed)}"
+                else:
+                    # No stock info available, assume JB is available
+                    prices['JB'] = row[JB_COL]
             
             # Porsche ZA (local baseline)
             pza_price = None
@@ -257,8 +282,12 @@ if comparison_file:
                         if cheapest_supplier in ['D911', 'EBS', 'PW OEM', 'PW AFT', 'PW Classic']:
                             pct_saving = ((pza_price - cheapest_price) / pza_price * 100) if pza_price else 0
                             reason = f'Saves {pct_saving:.1f}% vs PZA (>{intl_threshold}% threshold)'
+                            if jb_insufficient_stock:
+                                reason += f' (JB insufficient stock: {jb_stock_info})'
                         else:
                             reason = f'Saves R{savings:.0f} vs JB (>R{jb_threshold})'
+                            if jb_insufficient_stock:
+                                reason += f' (JB insufficient stock: {jb_stock_info})'
                 else:
                     best_supplier = cheapest_supplier
                     best_price = cheapest_price
@@ -271,16 +300,22 @@ if comparison_file:
                         reason = f'Saves {pct_saving:.1f}% vs PZA'
                         if oem_only_applied and best_supplier in ['PW OEM', 'EBS']:
                             reason += ' (OEM required)'
+                        if jb_insufficient_stock:
+                            reason += f' (JB insufficient stock: {jb_stock_info})'
                     elif best_supplier == 'JB':
                         reason = 'JB available (preferred)'
                     elif best_supplier == 'Porsche ZA':
                         reason = 'Porsche ZA'
                         if oem_only_applied:
                             reason += ' (OEM required)'
+                        if jb_insufficient_stock:
+                            reason += f' (JB insufficient stock: {jb_stock_info})'
                     else:
                         reason = 'Best available price'
                         if oem_only_applied:
                             reason += ' (OEM required)'
+                        if jb_insufficient_stock:
+                            reason += f' (JB insufficient stock: {jb_stock_info})'
                 
                 # Calculate savings vs PZA
                 if pza_price:
@@ -316,6 +351,12 @@ if comparison_file:
         df['Savings vs PZA (%)'] = results_df['% Savings']
         
         st.success("✅ Best supplier calculated for all parts!")
+        
+        # Show JB insufficient stock count
+        if show_reason and 'Selection Reason' in df.columns:
+            jb_stock_issues = df['Selection Reason'].str.contains('JB insufficient stock', na=False).sum()
+            if jb_stock_issues > 0:
+                st.warning(f"⚠️ {jb_stock_issues} parts: JB excluded due to insufficient stock")
         
         # Show OEM-only parts count if enabled
         if oem_only_seals:
@@ -479,6 +520,7 @@ else:
     
     **Your Business Rules:**
     - ✅ **JB Priority:** Choose JB unless others save >R700
+    - ✅ **JB Stock Check:** Automatically excludes JB if insufficient stock
     - ✅ **International Threshold:** Must save >15% vs PZA (logistics)
     - ✅ **OEM Only for Seals/Trim:** Rubber seals and body trim restricted to OEM suppliers (JB, Porsche ZA, PW OEM, EBS Genuine)
     - ✅ **All Suppliers:** Includes OEM, Aftermarket, and Classic Line from all suppliers
